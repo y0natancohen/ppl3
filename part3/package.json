@@ -1,0 +1,21 @@
+{
+  "name": "ppl192chap3",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Michael Elhadad",
+  "license": "ISC",
+  "dependencies": {
+    "@types/graphlib": "^2.1.4",
+    "@types/graphlib-dot": "^0.6.1",
+    "@types/node": "^11.11.3",
+    "@types/ramda": "^0.26.3",
+    "graphlib": "^2.1.7",
+    "graphlib-dot": "^0.6.2",
+    "ramda": "^0.26.1",
+    "s-expression": "^3.0.3"
+  }
+}
