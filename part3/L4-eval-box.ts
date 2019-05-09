@@ -2,52 +2,59 @@
 // L4 with mutation (set!) and env-box model
 // Direct evaluation of letrec with mutation, define supports mutual recursion.
 
-import { map, reduce, repeat, zipWith } from "ramda";
-import { allT, first, rest, isBoolean, isEmpty, isNumber, isString } from "./list";
-import { getErrorMessages, hasNoError, isError }  from "./error";
-import { isBoolExp, isCExp, isLitExp, isNumExp, isPrimOp, isStrExp, isVarRef, isSetExp,
-         isAppExp, isDefineExp, isExp, isIfExp, isLetrecExp, isLetExp, isProcExp, isProgram, 
-         Binding, PrimOp, VarDecl, CExp, Exp, IfExp, LetrecExp, LetExp, Parsed, ProcExp, Program, SetExp,
-         parse } from "./L4-ast";
+import {map, reduce, repeat, zipWith} from "ramda";
+import {allT, first, rest, isBoolean, isEmpty, isNumber, isString} from "./list";
+import {getErrorMessages, hasNoError, isError} from "./error";
+import {
+    isBoolExp, isCExp, isLitExp, isNumExp, isPrimOp, isStrExp, isVarRef, isSetExp,
+    isAppExp, isDefineExp, isExp, isIfExp, isLetrecExp, isLetExp, isProcExp, isProgram,
+    Binding, PrimOp, VarDecl, CExp, Exp, IfExp, LetrecExp, LetExp, Parsed, ProcExp, Program, SetExp,
+    parse
+} from "./L4-ast";
 import {
     applyEnv, applyEnvBdg, globalEnvAddBinding, makeExtEnv, setFBinding,
-    theGlobalEnv, Env, persistentEnv
+    theGlobalEnv, Env, persistentEnv, generateEnvId, FBinding, isExtEnv, isFrame, unbox, isGlobalEnv, EnvId, ExtEnv
 } from "./L4-env-box";
-import { isEmptySExp, isSymbolSExp, isClosure, isCompoundSExp, makeClosure, makeCompoundSExp, Closure, 
-         CompoundSExp, EmptySExp, makeEmptySExp, Value } from "./L4-value-box";
-import { Graph } from "graphlib";
+import {
+    isEmptySExp, isSymbolSExp, isClosure, isCompoundSExp, makeClosure, makeCompoundSExp, Closure,
+    CompoundSExp, EmptySExp, makeEmptySExp, Value
+} from "./L4-value-box";
+import {Edge, Graph} from "graphlib";
 import dot = require("graphlib-dot");
+import * as graphlib from "graphlib";
+import * as util from "util";
+import {astToDot, makeLeaf} from "../part2/graph-ast";
 
 // ========================================================
 // Eval functions
 
 const applicativeEval = (exp: CExp | Error, env: Env): Value | Error =>
-    isError(exp)  ? exp :
-    isNumExp(exp) ? exp.val :
-    isBoolExp(exp) ? exp.val :
-    isStrExp(exp) ? exp.val :
-    isPrimOp(exp) ? exp :
-    isVarRef(exp) ? applyEnv(env, exp.var) :
-    isLitExp(exp) ? exp.val :
-    isIfExp(exp) ? evalIf(exp, env) :
-    isProcExp(exp) ? evalProc(exp, env) :
-    isLetExp(exp) ? evalLet(exp, env) :
-    isLetrecExp(exp) ? evalLetrec(exp, env) :
-    isSetExp(exp) ? evalSet(exp, env) :
-    isAppExp(exp) ? applyProcedure(applicativeEval(exp.rator, env),
-                                   map((rand: CExp) => applicativeEval(rand, env),
-                                        exp.rands)) :
-    Error(`Bad L4 AST ${exp}`);
+    isError(exp) ? exp :
+        isNumExp(exp) ? exp.val :
+            isBoolExp(exp) ? exp.val :
+                isStrExp(exp) ? exp.val :
+                    isPrimOp(exp) ? exp :
+                        isVarRef(exp) ? applyEnv(env, exp.var) :
+                            isLitExp(exp) ? exp.val :
+                                isIfExp(exp) ? evalIf(exp, env) :
+                                    isProcExp(exp) ? evalProc(exp, env) :
+                                        isLetExp(exp) ? evalLet(exp, env) :
+                                            isLetrecExp(exp) ? evalLetrec(exp, env) :
+                                                isSetExp(exp) ? evalSet(exp, env) :
+                                                    isAppExp(exp) ? applyProcedure(applicativeEval(exp.rator, env),
+                                                        map((rand: CExp) => applicativeEval(rand, env),
+                                                            exp.rands), env) :
+                                                        Error(`Bad L4 AST ${exp}`);
 
 export const isTrueValue = (x: Value | Error): boolean | Error =>
     isError(x) ? x :
-    ! (x === false);
+        !(x === false);
 
 const evalIf = (exp: IfExp, env: Env): Value | Error => {
     const test = applicativeEval(exp.test, env);
     return isError(test) ? test :
         isTrueValue(test) ? applicativeEval(exp.then, env) :
-        applicativeEval(exp.alt, env);
+            applicativeEval(exp.alt, env);
 };
 
 const evalProc = (exp: ProcExp, env: Env): Closure =>
@@ -56,30 +63,32 @@ const evalProc = (exp: ProcExp, env: Env): Closure =>
 // @Pre: none of the args is an Error (checked in applyProcedure)
 // KEY: This procedure does NOT have an env parameter.
 //      Instead we use the env of the closure.
-const applyProcedure = (proc: Value | Error, args: Array<Value | Error>): Value | Error =>
+const applyProcedure = (proc: Value | Error, args: Array<Value | Error>, returnEnv: Env): Value | Error =>
     isError(proc) ? proc :
-    !hasNoError(args) ? Error(`Bad argument: ${getErrorMessages(args)}`) :
-    isPrimOp(proc) ? applyPrimitive(proc, args) :
-    isClosure(proc) ? applyClosure(proc, args) :
-    Error(`Bad procedure ${JSON.stringify(proc)}`);
+        !hasNoError(args) ? Error(`Bad argument: ${getErrorMessages(args)}`) :
+            isPrimOp(proc) ? applyPrimitive(proc, args) :
+                isClosure(proc) ? applyClosure(proc, args, returnEnv) :
+                    Error(`Bad procedure ${JSON.stringify(proc)}`);
 
-const applyClosure = (proc: Closure, args: Value[]): Value | Error => {
+const applyClosure = (proc: Closure, args: Value[], returnEnv: Env): Value | Error => {
     let vars = map((v: VarDecl) => v.var, proc.params);
-    return evalExps(proc.body, makeExtEnv(vars, args, proc.env));
+    let envId = generateEnvId();
+    let extendedEnv = makeExtEnv(vars, args, proc.env, returnEnv, envId);
+    persistentEnv.set(envId, extendedEnv);
+    return evalExps(proc.body, extendedEnv);
 };
 
 // Evaluate a sequence of expressions (in a program)
 export const evalExps = (exps: Exp[], env: Env): Value | Error =>
     isEmpty(exps) ? Error("Empty program") :
-    isDefineExp(first(exps)) ? evalDefineExps(first(exps), rest(exps)) :
-    evalCExps(first(exps), rest(exps), env);
-    
+        isDefineExp(first(exps)) ? evalDefineExps(first(exps), rest(exps)) :
+            evalCExps(first(exps), rest(exps), env);
+
 const evalCExps = (exp1: Exp, exps: Exp[], env: Env): Value | Error =>
     isCExp(exp1) && isEmpty(exps) ? applicativeEval(exp1, env) :
-    isCExp(exp1) ? (isError(applicativeEval(exp1, env)) ? Error("error") :
-                    evalExps(exps, env)) :
-    Error("Never");
-
+        isCExp(exp1) ? (isError(applicativeEval(exp1, env)) ? Error("error") :
+            evalExps(exps, env)) :
+            Error("Never");
 
 // Eval a sequence of expressions when the first exp is a Define.
 // Compute the rhs of the define, extend the env with the new binding
@@ -123,13 +132,13 @@ const evalLet = (exp: LetExp, env: Env): Value | Error => {
     const vals = map((v: CExp) => applicativeEval(v, env), map((b: Binding) => b.val, exp.bindings));
     const vars = map((b: Binding) => b.var.var, exp.bindings);
     if (hasNoError(vals)) {
-        return evalExps(exp.body, makeExtEnv(vars, vals, env));
+        return evalExps(exp.body, makeExtEnv(vars, vals, env, env, env.id));
     } else {
         return Error(getErrorMessages(vals));
     }
 };
 
-// @@ L4-EVAL-BOX 
+// @@ L4-EVAL-BOX
 // LETREC: Direct evaluation rule without syntax expansion
 // 1. extend the env with vars initialized to void (temporary value)
 // 2. compute the vals in the new extended env
@@ -138,7 +147,7 @@ const evalLet = (exp: LetExp, env: Env): Value | Error => {
 const evalLetrec = (exp: LetrecExp, env: Env): Value | Error => {
     const vars = map((b: Binding) => b.var.var, exp.bindings);
     const vals = map((b: Binding) => b.val, exp.bindings);
-    const extEnv = makeExtEnv(vars, repeat(undefined, vars.length), env);
+    const extEnv = makeExtEnv(vars, repeat(undefined, vars.length), env, env, env.id);
     // @@ Compute the vals in the extended env
     const cvals = map((v: CExp) => applicativeEval(v, extEnv), vals);
     if (hasNoError(cvals)) {
@@ -177,28 +186,28 @@ const one: number = 1;
 // TODO: Add explicit type checking in all primitives
 export const applyPrimitive = (proc: PrimOp, args: Value[]): Value | Error =>
     proc.op === "+" ? (allT(isNumber, args) ? reduce((x: number, y: number) => x + y, zero, args) : Error("+ expects numbers only")) :
-    proc.op === "-" ? minusPrim(args) :
-    proc.op === "*" ? (allT(isNumber, args) ? reduce((x: number, y: number) => x * y, one, args) : Error("* expects numbers only")) :
-    proc.op === "/" ? divPrim(args) :
-    proc.op === ">" ? ((allT(isNumber, args) || allT(isString, args)) ? args[0] > args[1] : Error("> expects numbers or strings only")) :
-    proc.op === "<" ? ((allT(isNumber, args) || allT(isString, args)) ? args[0] < args[1] : Error("< expects numbers or strings only")) :
-    proc.op === "=" ? args[0] === args[1] :
-    proc.op === "not" ? ! args[0] :
-    proc.op === "and" ? isBoolean(args[0]) && isBoolean(args[1]) && args[0] && args[1] :
-    proc.op === "or" ? isBoolean(args[0]) && isBoolean(args[1]) && (args[0] || args[1]) :
-    proc.op === "eq?" ? eqPrim(args) :
-    proc.op === "string=?" ? args[0] === args[1] :
-    proc.op === "cons" ? consPrim(args[0], args[1]) :
-    proc.op === "car" ? carPrim(args[0]) :
-    proc.op === "cdr" ? cdrPrim(args[0]) :
-    proc.op === "list" ? listPrim(args) :
-    proc.op === "list?" ? isListPrim(args[0]) :
-    proc.op === "pair?" ? isPairPrim(args[0]) :
-    proc.op === "number?" ? typeof(args[0]) === 'number' :
-    proc.op === "boolean?" ? typeof(args[0]) === 'boolean' :
-    proc.op === "symbol?" ? isSymbolSExp(args[0]) :
-    proc.op === "string?" ? isString(args[0]) :
-    Error("Bad primitive op " + proc.op);
+        proc.op === "-" ? minusPrim(args) :
+            proc.op === "*" ? (allT(isNumber, args) ? reduce((x: number, y: number) => x * y, one, args) : Error("* expects numbers only")) :
+                proc.op === "/" ? divPrim(args) :
+                    proc.op === ">" ? ((allT(isNumber, args) || allT(isString, args)) ? args[0] > args[1] : Error("> expects numbers or strings only")) :
+                        proc.op === "<" ? ((allT(isNumber, args) || allT(isString, args)) ? args[0] < args[1] : Error("< expects numbers or strings only")) :
+                            proc.op === "=" ? args[0] === args[1] :
+                                proc.op === "not" ? !args[0] :
+                                    proc.op === "and" ? isBoolean(args[0]) && isBoolean(args[1]) && args[0] && args[1] :
+                                        proc.op === "or" ? isBoolean(args[0]) && isBoolean(args[1]) && (args[0] || args[1]) :
+                                            proc.op === "eq?" ? eqPrim(args) :
+                                                proc.op === "string=?" ? args[0] === args[1] :
+                                                    proc.op === "cons" ? consPrim(args[0], args[1]) :
+                                                        proc.op === "car" ? carPrim(args[0]) :
+                                                            proc.op === "cdr" ? cdrPrim(args[0]) :
+                                                                proc.op === "list" ? listPrim(args) :
+                                                                    proc.op === "list?" ? isListPrim(args[0]) :
+                                                                        proc.op === "pair?" ? isPairPrim(args[0]) :
+                                                                            proc.op === "number?" ? typeof (args[0]) === 'number' :
+                                                                                proc.op === "boolean?" ? typeof (args[0]) === 'boolean' :
+                                                                                    proc.op === "symbol?" ? isSymbolSExp(args[0]) :
+                                                                                        proc.op === "string?" ? isString(args[0]) :
+                                                                                            Error("Bad primitive op " + proc.op);
 
 const minusPrim = (args: Value[]): number | Error => {
     // TODO complete
@@ -239,18 +248,18 @@ const eqPrim = (args: Value[]): boolean | Error => {
 
 const carPrim = (v: Value): Value | Error =>
     isCompoundSExp(v) ? v.val1 :
-    Error(`Car: param is not compound ${v}`);
+        Error(`Car: param is not compound ${v}`);
 
 const cdrPrim = (v: Value): Value | Error =>
     isCompoundSExp(v) ? v.val2 :
-    Error(`Cdr: param is not compound ${v}`);
+        Error(`Cdr: param is not compound ${v}`);
 
 const consPrim = (v1: Value, v2: Value): CompoundSExp =>
     makeCompoundSExp(v1, v2);
 
 export const listPrim = (vals: Value[]): EmptySExp | CompoundSExp =>
     vals.length === 0 ? makeEmptySExp() :
-    makeCompoundSExp(first(vals), listPrim(rest(vals)));
+        makeCompoundSExp(first(vals), listPrim(rest(vals)))
 
 const isListPrim = (v: Value): boolean =>
     isEmptySExp(v) || isCompoundSExp(v);
@@ -261,14 +270,83 @@ const isPairPrim = (v: Value): boolean =>
 interface Tree {
     tag: "Tree",
     rootId: string,
-    graph: Graph, 
+    graph: Graph,
 }
 
+/*
+* accepts a persistent environment and draws its diagram
+* */
+//todo: return original signature
 // export const drawEnvDiagram = (pEnv: {}): Tree | Error => {
-//     // TODO
-// };
-//
-//
-// export const evalParseDraw = (s: string): string | Error => {
-//     // TODO
-// };
+export const drawEnvDiagram = (pEnv: Map<EnvId, Env>): Tree | Error => {
+
+    let resGraph = new Graph();
+    // add nodes
+    for (const envName of pEnv.keys()) {
+        let env = pEnv.get(envName);
+        if (typeof env !== "undefined") {
+            let label = makeLabel(envName, env);
+            resGraph.setNode(envName, {label: label, shape: "Mrecord"});
+        }
+    }
+    //add edges
+    for (const envName of pEnv.keys()) {
+        let currentEnv = pEnv.get(envName);
+        if (isExtEnv(currentEnv)) {
+            resGraph.setEdge(envName, currentEnv.env.id);
+            makeReturnEnvLeaf(resGraph, currentEnv.returnEnv.id, currentEnv.id);
+        }
+    }
+    return {tag: "Tree", rootId: "root", graph: resGraph};
+};
+
+const makeReturnEnvLeaf = (graph: Graph, envName: string, fromEnvName: string): void => {
+    let nodeName = envName + "_link";
+    graph.setNode(nodeName, {label: envName, shape: "record" ,color: "white"});
+    graph.setEdge(fromEnvName, nodeName, {style: "dashed"});
+};
+
+export const makeEnv = (envName: string, env: Env): Tree => {
+    let graph = new Graph();
+    graph.setNode(envName, {label: makeLabel(envName, env)});
+    return {tag: "Tree", rootId: envName, graph};
+};
+
+const bindingToString = (binding: FBinding): string => {
+    if (isClosure(unbox(binding.val)))
+        return binding.var + ": ";
+    else
+        return binding.var + ":" + binding.val;
+};
+
+const makeLabel = (envName: string, env: Env): string => {
+    let label = "{" + envName + "|" ;
+    if (isGlobalEnv(env)) {
+        label += unbox(env.frame).fbindings.map(bindingToString).join("\\l|")
+    } else if (isExtEnv(env)) {
+        if (isFrame(env.frame)){
+            label += env.frame.fbindings.map(bindingToString).join("\\l|");
+        }
+    }
+    label += "\\l}";
+    return label;
+};
+/*
+* wrapper function for the whole process:
+* it runs parseEval and then drawEnvDiagram
+* */
+export const evalParseDraw = (s: string): string | Error => {
+    evalParse(s);
+    // console.log(util.inspect(persistentEnv, {showHidden: false, depth: null}));
+    let tree = drawEnvDiagram(persistentEnv);
+    if (isError(tree))
+        return tree;
+    else
+        return astToDot(tree);
+};
+// const demoProgStr: string = "(L4 (define z 4) (define foo (lambda (x y) (+ x y))) (foo 4 5) ((lambda (x) 5) 8))";
+const demoProgStr: string = "(L4 (define z 4) (define foo (lambda (x y) (+ x y))) (foo 4 5))";
+console.log(evalParseDraw(demoProgStr));
+
+
+
