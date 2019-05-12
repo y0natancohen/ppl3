@@ -2,18 +2,33 @@
 // L4 with mutation (set!) and env-box model
 // Direct evaluation of letrec with mutation, define supports mutual recursion.
 
-import {map, reduce, repeat, zipWith} from "ramda";
+import {map, reduce, repeat, zipWith, filter} from "ramda";
 import {allT, first, rest, isBoolean, isEmpty, isNumber, isString} from "./list";
 import {getErrorMessages, hasNoError, isError} from "./error";
 import {
     isBoolExp, isCExp, isLitExp, isNumExp, isPrimOp, isStrExp, isVarRef, isSetExp,
     isAppExp, isDefineExp, isExp, isIfExp, isLetrecExp, isLetExp, isProcExp, isProgram,
     Binding, PrimOp, VarDecl, CExp, Exp, IfExp, LetrecExp, LetExp, Parsed, ProcExp, Program, SetExp,
-    parse
+    parse, unparse
 } from "./L4-ast";
 import {
-    applyEnv, applyEnvBdg, globalEnvAddBinding, makeExtEnv, setFBinding,
-    theGlobalEnv, Env, persistentEnv, generateEnvId, FBinding, isExtEnv, isFrame, unbox, isGlobalEnv, EnvId, ExtEnv
+    applyEnv,
+    applyEnvBdg,
+    globalEnvAddBinding,
+    makeExtEnv,
+    setFBinding,
+    theGlobalEnv,
+    Env,
+    persistentEnv,
+    generateEnvId,
+    FBinding,
+    isExtEnv,
+    isFrame,
+    unbox,
+    isGlobalEnv,
+    EnvId,
+    ExtEnv,
+    generateBodyId, BodyId
 } from "./L4-env-box";
 import {
     isEmptySExp, isSymbolSExp, isClosure, isCompoundSExp, makeClosure, makeCompoundSExp, Closure,
@@ -23,7 +38,7 @@ import {Edge, Graph} from "graphlib";
 import dot = require("graphlib-dot");
 import * as graphlib from "graphlib";
 import * as util from "util";
-import {astToDot, makeLeaf} from "../part2/graph-ast";
+import {astToDot} from "../part2/graph-ast";
 
 // ========================================================
 // Eval functions
@@ -132,7 +147,10 @@ const evalLet = (exp: LetExp, env: Env): Value | Error => {
     const vals = map((v: CExp) => applicativeEval(v, env), map((b: Binding) => b.val, exp.bindings));
     const vars = map((b: Binding) => b.var.var, exp.bindings);
     if (hasNoError(vals)) {
-        return evalExps(exp.body, makeExtEnv(vars, vals, env, env, env.id));
+        let envId = generateEnvId();
+        let newEnv =  makeExtEnv(vars, vals, env, env, envId);
+        persistentEnv.set(envId, newEnv);
+        return evalExps(exp.body,newEnv);
     } else {
         return Error(getErrorMessages(vals));
     }
@@ -287,6 +305,39 @@ export const drawEnvDiagram = (pEnv: Map<EnvId, Env>): Tree | Error => {
         if (typeof env !== "undefined") {
             let label = makeLabel(envName, env);
             resGraph.setNode(envName, {label: label, shape: "Mrecord"});
+
+            if (isGlobalEnv(env)) {
+                let frame = unbox(env.frame);
+                frame.fbindings
+                    .forEach(closureBinding => {
+                        let bodyId = generateBodyId();
+                        let val = unbox(closureBinding.val);
+                        if (isClosure(val)) {
+                            let closureLabel = makeClosureLabel("0", val);
+                            resGraph.setNode(bodyId, {label: closureLabel, shape: "record", color: "white"});
+                            resGraph.setEdge(envName, bodyId, {tailport: closureBinding.var, headport: "0"});
+                            resGraph.setEdge(bodyId, val.env.id, {tailport: "0"});
+                        }
+                    });
+            } else {
+                if (isExtEnv(env)) {
+                    let frame = env.frame;
+                    if (isFrame(frame)) {
+                        frame.fbindings
+                            .forEach(closureBinding => {
+                                let bodyId = generateBodyId();
+                                let val = unbox(closureBinding.val);
+                                if (isClosure(val)) {
+                                    let closureLabel = makeClosureLabel("0", val);
+                                    resGraph.setNode(bodyId, {label: closureLabel, shape: "record", color: "white"});
+                                    resGraph.setEdge(envName, bodyId, {tailport: closureBinding.var, headport: "0"});
+                                    resGraph.setEdge(bodyId, val.env.id, {tailport: "0"});
+                                }
+                            });
+                    }
+                }
+            }
+
         }
     }
     //add edges
@@ -302,29 +353,30 @@ export const drawEnvDiagram = (pEnv: Map<EnvId, Env>): Tree | Error => {
 
 const makeReturnEnvLeaf = (graph: Graph, envName: string, fromEnvName: string): void => {
     let nodeName = envName + "_link";
-    graph.setNode(nodeName, {label: envName, shape: "record" ,color: "white"});
+    graph.setNode(nodeName, {label: envName, shape: "record", color: "white"});
     graph.setEdge(fromEnvName, nodeName, {style: "dashed"});
-};
-
-export const makeEnv = (envName: string, env: Env): Tree => {
-    let graph = new Graph();
-    graph.setNode(envName, {label: makeLabel(envName, env)});
-    return {tag: "Tree", rootId: envName, graph};
 };
 
 const bindingToString = (binding: FBinding): string => {
     if (isClosure(unbox(binding.val)))
-        return binding.var + ": ";
+        return "<" + binding.var + ">" + binding.var + ": ";
     else
         return binding.var + ":" + binding.val;
 };
 
+const makeClosureLabel = (bodyId: BodyId, closure: Closure): string => {
+    return "{<" + bodyId + ">" + "◯◯\\l|p:" +
+        closure.params.map(param => param.var).join(",") + "\\l| b: " +
+        closure.body.map(unparse).join("\n") + "\\l}";
+};
+
 const makeLabel = (envName: string, env: Env): string => {
-    let label = "{" + envName + "|" ;
+    let label = "{" + envName + "|";
     if (isGlobalEnv(env)) {
-        label += unbox(env.frame).fbindings.map(bindingToString).join("\\l|")
+        label += unbox(env.frame).fbindings.map(bindingToString).join("\\l|");
+
     } else if (isExtEnv(env)) {
-        if (isFrame(env.frame)){
+        if (isFrame(env.frame)) {
             label += env.frame.fbindings.map(bindingToString).join("\\l|");
         }
     }
@@ -337,15 +389,17 @@ const makeLabel = (envName: string, env: Env): string => {
 * */
 export const evalParseDraw = (s: string): string | Error => {
     evalParse(s);
-    // console.log(util.inspect(persistentEnv, {showHidden: false, depth: null}));
     let tree = drawEnvDiagram(persistentEnv);
+    console.log(persistentEnv);
     if (isError(tree))
         return tree;
     else
         return astToDot(tree);
 };
 // const demoProgStr: string = "(L4 (define z 4) (define foo (lambda (x y) (+ x y))) (foo 4 5) ((lambda (x) 5) 8))";
-const demoProgStr: string = "(L4 (define z 4) (define foo (lambda (x y) (+ x y))) (foo 4 5))";
+// const demoProgStr: string = "(L4 (define z 4) (define foo (lambda (x y) (+ x y))) (foo 4 5))";
+// const demoProgStr: string = "(L4 (define make-adder (lambda (a) (lambda (x) (+ x a) ) ) ) (define a5 (make-adder 5)) (a5 10))";
+const demoProgStr: string = "(L4 (let ((f (let ((a 1))(lambda (x)(+ x a)))))(f 10)))";
 console.log(evalParseDraw(demoProgStr));
 
 

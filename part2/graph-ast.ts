@@ -84,7 +84,7 @@ const makeTree = (label: string, nodes: Tree[], edgesLabels: string[]): Tree => 
     return { tag: "Tree", rootId: headId, graph };
 };
 
-const astToDot = (ast: Tree): string => dot.write(ast.graph);
+export const astToDot = (ast: Tree): string => dot.write(ast.graph);
 
 const expToTree = (exp: string) =>
     safeF(astToDot)(safeF(makeAST)(parse(exp)));

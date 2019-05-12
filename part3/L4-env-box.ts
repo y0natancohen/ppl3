@@ -173,10 +173,10 @@ export const generateEnvId = (): EnvId => {
 
 export let persistentEnv:Map<EnvId,Env> = new Map([["GE",theGlobalEnv]]);
 
-type BodyId = string;
+export type BodyId = string;
 let bodyIdCounter: Box<number> = makeBox(0);
 
-const generateBodyId = (): BodyId => {
+export const generateBodyId = (): BodyId => {
     let currentId = unbox(bodyIdCounter);
     setBox(bodyIdCounter, currentId + 1);
     return "B" + currentId;
