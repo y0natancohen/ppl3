@@ -72,8 +72,9 @@ const evalIf = (exp: IfExp, env: Env): Value | Error => {
             applicativeEval(exp.alt, env);
 };
 
-const evalProc = (exp: ProcExp, env: Env): Closure =>
-    makeClosure(exp.args, exp.body, env);
+const evalProc = (exp: ProcExp, env: Env): Closure => {
+    return makeClosure(exp.args, exp.body, env);
+};
 
 // @Pre: none of the args is an Error (checked in applyProcedure)
 // KEY: This procedure does NOT have an env parameter.
@@ -87,9 +88,8 @@ const applyProcedure = (proc: Value | Error, args: Array<Value | Error>, returnE
 
 const applyClosure = (proc: Closure, args: Value[], returnEnv: Env): Value | Error => {
     let vars = map((v: VarDecl) => v.var, proc.params);
-    let envId = generateEnvId();
-    let extendedEnv = makeExtEnv(vars, args, proc.env, returnEnv, envId);
-    persistentEnv[envId] = extendedEnv;
+    let extendedEnv = makeExtEnv(vars, args, proc.env, returnEnv);
+    persistentEnv[extendedEnv.id] = extendedEnv;
     return evalExps(proc.body, extendedEnv);
 };
 
@@ -147,9 +147,8 @@ const evalLet = (exp: LetExp, env: Env): Value | Error => {
     const vals = map((v: CExp) => applicativeEval(v, env), map((b: Binding) => b.val, exp.bindings));
     const vars = map((b: Binding) => b.var.var, exp.bindings);
     if (hasNoError(vals)) {
-        let envId = generateEnvId();
-        let newEnv = makeExtEnv(vars, vals, env, env, envId);
-        persistentEnv[envId] = newEnv;
+        let newEnv = makeExtEnv(vars, vals, env, env);
+        persistentEnv[newEnv.id] = newEnv;
         return evalExps(exp.body, newEnv);
     } else {
         return Error(getErrorMessages(vals));
@@ -165,7 +164,7 @@ const evalLet = (exp: LetExp, env: Env): Value | Error => {
 const evalLetrec = (exp: LetrecExp, env: Env): Value | Error => {
     const vars = map((b: Binding) => b.var.var, exp.bindings);
     const vals = map((b: Binding) => b.val, exp.bindings);
-    const extEnv = makeExtEnv(vars, repeat(undefined, vars.length), env, env, env.id);
+    const extEnv = makeExtEnv(vars, repeat(undefined, vars.length), env, env);
     // @@ Compute the vals in the extended env
     const cvals = map((v: CExp) => applicativeEval(v, extEnv), vals);
     if (hasNoError(cvals)) {
@@ -291,6 +290,16 @@ interface Tree {
     graph: Graph,
 }
 
+function handleClosureGraph(frameBinding: FBinding, resGraph:Graph, envName:string) {
+    let val = unbox(frameBinding.val);
+    if (isClosure(val)) {
+        let closureLabel = makeClosureLabel(val.bodyId, val);
+        resGraph.setNode(val.bodyId, {label: closureLabel, shape: "record", color: "white"});
+        resGraph.setEdge(envName, val.bodyId, {tailport: frameBinding.var, headport: "0"});
+        resGraph.setEdge(val.bodyId, val.env.id, {tailport: "0"});
+    }
+}
+
 /*
 * accepts a persistent environment and draws its diagram
 * */
@@ -305,30 +314,16 @@ export const drawEnvDiagram = (pEnv: {}): Tree | Error => {
             if (isGlobalEnv(env)) {
                 let frame = unbox(env.frame);
                 frame.fbindings
-                    .forEach(closureBinding => {
-                        let bodyId = generateBodyId();
-                        let val = unbox(closureBinding.val);
-                        if (isClosure(val)) {
-                            let closureLabel = makeClosureLabel(bodyId, val);
-                            resGraph.setNode(bodyId, {label: closureLabel, shape: "record", color: "white"});
-                            resGraph.setEdge(envName, bodyId, {tailport: closureBinding.var, headport: "0"});
-                            resGraph.setEdge(bodyId, val.env.id, {tailport: "0"});
-                        }
+                    .forEach(frameBinding => {
+                        handleClosureGraph(frameBinding, resGraph, envName);
                     });
             } else {
                 if (isExtEnv(env)) {
                     let frame = env.frame;
                     if (isFrame(frame)) {
                         frame.fbindings
-                            .forEach(closureBinding => {
-                                let bodyId = generateBodyId();
-                                let val = unbox(closureBinding.val);
-                                if (isClosure(val)) {
-                                    let closureLabel = makeClosureLabel(bodyId, val);
-                                    resGraph.setNode(bodyId, {label: closureLabel, shape: "record", color: "white"});
-                                    resGraph.setEdge(envName, bodyId, {tailport: closureBinding.var, headport: "0"});
-                                    resGraph.setEdge(bodyId, val.env.id, {tailport: "0"});
-                                }
+                            .forEach(frameBinding => {
+                                handleClosureGraph(frameBinding, resGraph, envName);
                             });
                     }
                 }
@@ -393,8 +388,9 @@ export const evalParseDraw = (s: string): string | Error => {
 };
 // const demoProgStr: string = "(L4 (define z 4) (define foo (lambda (x y) (+ x y))) (foo 4 5) ((lambda (x) 5) 8))";
 // const demoProgStr: string = "(L4 (define z 4) (define foo (lambda (x y) (+ x y))) (foo 4 5))";
-const demoProgStr: string = "(L4 (define make-adder (lambda (a) (lambda (x) (+ x a) ) ) ) (define a5 (make-adder 5)) (a5 10))";
+// const demoProgStr: string = "(L4 (define make-adder (lambda (a) (lambda (x) (+ x a) ) ) ) (define a5 (make-adder 5)) (a5 10))";
 // const demoProgStr: string = "(L4 (let ((f (let ((a 1))(lambda (x)(+ x a)))))(f 10)))";
+const demoProgStr: string = "(L4 (define x (lambda (x) (* 2 x))) (define y (lambda (f) f)) (y x))";
 console.log(evalParseDraw(demoProgStr));
 
 

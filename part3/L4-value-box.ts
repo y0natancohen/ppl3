@@ -8,7 +8,7 @@ import { append, map } from 'ramda';
 import { isError } from './error';
 import { isArray, isNumber, isString } from './list';
 import { CExp, isPrimOp, PrimOp, VarDecl, unparse } from './L4-ast';
-import { Env } from './L4-env-box';
+import {Env, generateBodyId} from './L4-env-box';
 
 // Add void for value of side-effect expressions - set! and define
 export type Value = SExp | Closure
@@ -23,9 +23,10 @@ export interface Closure {
     params: VarDecl[];
     body: CExp[];
     env: Env;
-};
+    bodyId:string;
+}
 export const makeClosure = (params: VarDecl[], body: CExp[], env: Env): Closure =>
-    ({tag: "Closure", params, body, env});
+    ({tag: "Closure", params, body, env, bodyId:generateBodyId()});
 export const isClosure = (x: any): x is Closure => x.tag === "Closure";
 
 
@@ -35,14 +36,14 @@ export interface CompoundSExp {
     tag: "CompoundSexp";
     val1: SExp;
     val2: SExp;
-};
+}
 export interface EmptySExp {
     tag: "EmptySExp";
-};
+}
 export interface SymbolSExp {
     tag: "SymbolSExp";
     val: string;
-};
+}
 
 // @@L4-BOX-VALUE
 // Add void for value of side-effect expressions - set! and define
