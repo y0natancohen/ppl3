@@ -89,7 +89,7 @@ const applyClosure = (proc: Closure, args: Value[], returnEnv: Env): Value | Err
     let vars = map((v: VarDecl) => v.var, proc.params);
     let envId = generateEnvId();
     let extendedEnv = makeExtEnv(vars, args, proc.env, returnEnv, envId);
-    persistentEnv.set(envId, extendedEnv);
+    persistentEnv[envId] = extendedEnv;
     return evalExps(proc.body, extendedEnv);
 };
 
@@ -148,9 +148,9 @@ const evalLet = (exp: LetExp, env: Env): Value | Error => {
     const vars = map((b: Binding) => b.var.var, exp.bindings);
     if (hasNoError(vals)) {
         let envId = generateEnvId();
-        let newEnv =  makeExtEnv(vars, vals, env, env, envId);
-        persistentEnv.set(envId, newEnv);
-        return evalExps(exp.body,newEnv);
+        let newEnv = makeExtEnv(vars, vals, env, env, envId);
+        persistentEnv[envId] = newEnv;
+        return evalExps(exp.body, newEnv);
     } else {
         return Error(getErrorMessages(vals));
     }
@@ -294,18 +294,14 @@ interface Tree {
 /*
 * accepts a persistent environment and draws its diagram
 * */
-//todo: return original signature
-// export const drawEnvDiagram = (pEnv: {}): Tree | Error => {
-export const drawEnvDiagram = (pEnv: Map<EnvId, Env>): Tree | Error => {
-
+export const drawEnvDiagram = (pEnv: {}): Tree | Error => {
     let resGraph = new Graph();
     // add nodes
-    for (const envName of pEnv.keys()) {
-        let env = pEnv.get(envName);
+    Object.keys(pEnv).forEach((envName) => {
+        let env = pEnv[envName];
         if (typeof env !== "undefined") {
             let label = makeLabel(envName, env);
             resGraph.setNode(envName, {label: label, shape: "Mrecord"});
-
             if (isGlobalEnv(env)) {
                 let frame = unbox(env.frame);
                 frame.fbindings
@@ -313,7 +309,7 @@ export const drawEnvDiagram = (pEnv: Map<EnvId, Env>): Tree | Error => {
                         let bodyId = generateBodyId();
                         let val = unbox(closureBinding.val);
                         if (isClosure(val)) {
-                            let closureLabel = makeClosureLabel("0", val);
+                            let closureLabel = makeClosureLabel(bodyId, val);
                             resGraph.setNode(bodyId, {label: closureLabel, shape: "record", color: "white"});
                             resGraph.setEdge(envName, bodyId, {tailport: closureBinding.var, headport: "0"});
                             resGraph.setEdge(bodyId, val.env.id, {tailport: "0"});
@@ -328,7 +324,7 @@ export const drawEnvDiagram = (pEnv: Map<EnvId, Env>): Tree | Error => {
                                 let bodyId = generateBodyId();
                                 let val = unbox(closureBinding.val);
                                 if (isClosure(val)) {
-                                    let closureLabel = makeClosureLabel("0", val);
+                                    let closureLabel = makeClosureLabel(bodyId, val);
                                     resGraph.setNode(bodyId, {label: closureLabel, shape: "record", color: "white"});
                                     resGraph.setEdge(envName, bodyId, {tailport: closureBinding.var, headport: "0"});
                                     resGraph.setEdge(bodyId, val.env.id, {tailport: "0"});
@@ -339,15 +335,15 @@ export const drawEnvDiagram = (pEnv: Map<EnvId, Env>): Tree | Error => {
             }
 
         }
-    }
-    //add edges
-    for (const envName of pEnv.keys()) {
-        let currentEnv = pEnv.get(envName);
+    });
+    // //add edges
+    Object.keys(pEnv).forEach(envName => {
+        let currentEnv = pEnv[envName];
         if (isExtEnv(currentEnv)) {
             resGraph.setEdge(envName, currentEnv.env.id);
             makeReturnEnvLeaf(resGraph, currentEnv.returnEnv.id, currentEnv.id);
         }
-    }
+    });
     return {tag: "Tree", rootId: "root", graph: resGraph};
 };
 
@@ -366,7 +362,7 @@ const bindingToString = (binding: FBinding): string => {
 
 const makeClosureLabel = (bodyId: BodyId, closure: Closure): string => {
     return "{<" + bodyId + ">" + "◯◯\\l|p:" +
-        closure.params.map(param => param.var).join(",") + "\\l| b: " +
+        closure.params.map(param => param.var).join(",") + "\\l|" + bodyId + ": " +
         closure.body.map(unparse).join("\n") + "\\l}";
 };
 
@@ -390,7 +386,6 @@ const makeLabel = (envName: string, env: Env): string => {
 export const evalParseDraw = (s: string): string | Error => {
     evalParse(s);
     let tree = drawEnvDiagram(persistentEnv);
-    console.log(persistentEnv);
     if (isError(tree))
         return tree;
     else
@@ -398,8 +393,8 @@ export const evalParseDraw = (s: string): string | Error => {
 };
 // const demoProgStr: string = "(L4 (define z 4) (define foo (lambda (x y) (+ x y))) (foo 4 5) ((lambda (x) 5) 8))";
 // const demoProgStr: string = "(L4 (define z 4) (define foo (lambda (x y) (+ x y))) (foo 4 5))";
-// const demoProgStr: string = "(L4 (define make-adder (lambda (a) (lambda (x) (+ x a) ) ) ) (define a5 (make-adder 5)) (a5 10))";
-const demoProgStr: string = "(L4 (let ((f (let ((a 1))(lambda (x)(+ x a)))))(f 10)))";
+const demoProgStr: string = "(L4 (define make-adder (lambda (a) (lambda (x) (+ x a) ) ) ) (define a5 (make-adder 5)) (a5 10))";
+// const demoProgStr: string = "(L4 (let ((f (let ((a 1))(lambda (x)(+ x a)))))(f 10)))";
 console.log(evalParseDraw(demoProgStr));
 
 
