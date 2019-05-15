@@ -29,7 +29,7 @@ import {
 } from "./L4-env-box";
 import {
     isEmptySExp, isSymbolSExp, isClosure, isCompoundSExp, makeClosure, makeCompoundSExp, Closure,
-    CompoundSExp, EmptySExp, makeEmptySExp, Value, makeClosureBodyId, ClosureBodyId, makeClosure1
+    CompoundSExp, EmptySExp, makeEmptySExp, Value, makeClosure1
 } from "./L4-value-box";
 import {Edge, Graph} from "graphlib";
 import dot = require("graphlib-dot");
@@ -409,17 +409,9 @@ interface Tree {
     graph: Graph,
 }
 
-function handleClosureGraph(frameBinding: FBinding, resGraph:Graph, envName:string):void {
+function handleClosureGraph(frameBinding: FBinding, resGraph: Graph, envName: string): void {
     let closure = unbox(frameBinding.val);
     if (isClosure(closure)) {
-        // let new_closure = makeClosureBodyId(closure);
-        // let currentBodyId:BodyId;
-        // if(closure['bodyId']=== undefined){
-        //     currentBodyId = generateBodyId();
-        //     closure['bodyId'] = currentBodyId;
-        // }else{
-        //     currentBodyId = closure['bodyId'];
-        // }
         let currentBodyId = closure.bodyId;
         let closureLabel = makeClosureLabel(currentBodyId, closure);
         resGraph.setNode(currentBodyId, {label: closureLabel, shape: "record", color: "white"});
@@ -490,16 +482,26 @@ const makeClosureLabel = (bodyId: BodyId, closure: Closure): string => {
 };
 
 const makeLabel = (envName: string, env: Env): string => {
-    let label = "{" + envName + "|";
+    let label = "{" + envName ;
     if (isGlobalEnv(env)) {
-        label += unbox(env.frame).fbindings.map(bindingToString).join("\\l|");
-
+        if (isEmpty(unbox(env.frame).fbindings)) {
+            label += "}";
+        } else {
+            label+= "|";
+            label += unbox(env.frame).fbindings.map(bindingToString).join("\\l|");
+            label += "\\l}";
+        }
     } else if (isExtEnv(env)) {
         if (isFrame(env.frame)) {
-            label += env.frame.fbindings.map(bindingToString).join("\\l|");
+            if(isEmpty(env.frame.fbindings)){
+                label += "}";
+            }else{
+                label += "|";
+                label += env.frame.fbindings.map(bindingToString).join("\\l|");
+                label += "\\l}";
+            }
         }
     }
-    label += "\\l}";
     return label;
 };
 /*
@@ -518,48 +520,12 @@ export const evalParseDraw = (s: string): string | Error => {
 // const demoProgStr: string = "(L4 (define z 4) (define foo (lambda (x y) (+ x y))) (foo 4 5))";
 // const demoProgStr: string = "(L4 (define make-adder (lambda (a) (lambda (x) (+ x a) ) ) ) (define a5 (make-adder 5)) (a5 10))";
 // const demoProgStr: string = "(L4 (let ((f (let ((a 1))(lambda (x)(+ x a)))))(f 10)))";
-const demoProgStr: string = "(L4 (define x (lambda (x) (* 2 x))) (define y (lambda (f) f)) (y x))";
-console.log(evalParseDraw(demoProgStr));
+// const demoProgStr: string = "(L4 (define x (lambda (x) (* 2 x))) (define y (lambda (f) f)) (y x))";
+// console.log(evalParseDraw(demoProgStr));
 
 
-// - no B0 in closure
-// const test2=`
-// (L4
-//   (define z 4)
-//   (define foo (lambda (x y) (+ x y)))
-//   (foo 4 5))`;
-// console.log(evalParseDraw(test2));
 
 
-// empty GE env seen as spllited squre - should be squre
-// const test4=`
-// (L4
-//   (let ((c 1) (d 1)) (+ c d)))`;
-// console.log(evalParseDraw(test4));
 
-
-// const test5=`
-//   (L4
-//     (define x
-//       (lambda (x) (* 2 x)))
-//     (define y
-//       (lambda (f) f))
-//     (y x))`;
-// console.log(evalParseDraw(test5));
-
-//
-// const test6=`(L4 (define x (lambda (x) (* 2 x))) (define y (lambda (f) f)) (y x))`;
-// console.log(evalParseDraw(test6));
-//
-//
-// const test7 = "(L4 (define makeAdder (lambda (n) (lambda (y) (+ y n))))(define a6 (makeAdder 6))(define a7 (makeAdder 7))(+ (a6 1) (a7 1)))";
-// console.log(evalParseDraw(test7));
-//
-//
-// const test8=`(L4 (define z 4) (define foo (lambda (x y) (+ x y))) (foo 4 5))`;
-// console.log(evalParseDraw(test8));
-//
-// const test9=`(L4(define fact(lambda (n)(if(= n 0) 1 (* n (fact (- n 1))))))(fact 3))`;
-// console.log(evalParseDraw(test9));
-
-
+const test9=`(L4(define fact(lambda (n)(if(= n 0) 1 (* n (fact (- n 1))))))(fact 3))`;
+console.log(evalParseDraw(test9));
