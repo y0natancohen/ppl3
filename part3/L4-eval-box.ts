@@ -344,7 +344,7 @@ export const drawEnvDiagram = (pEnv: {}): Tree | Error => {
 
 const makeReturnEnvLeaf = (graph: Graph, envName: string, fromEnvName: string): void => {
     let nodeName = envName + "_link";
-    graph.setNode(nodeName, {label: envName, shape: "record", color: "white"});
+    graph.setNode(nodeName, {label: envName, shape: "plaintext"});
     graph.setEdge(fromEnvName, nodeName, {style: "dashed"});
 };
 
@@ -384,7 +384,7 @@ export const evalParseDraw = (s: string): string | Error => {
     if (isError(tree))
         return tree;
     else
-        return astToDot(tree);
+        return dot.write(tree.graph);
 };
 // const demoProgStr: string = "(L4 (define z 4) (define foo (lambda (x y) (+ x y))) (foo 4 5) ((lambda (x) 5) 8))";
 // const demoProgStr: string = "(L4 (define z 4) (define foo (lambda (x y) (+ x y))) (foo 4 5))";

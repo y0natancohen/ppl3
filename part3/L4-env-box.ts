@@ -172,7 +172,7 @@ export const generateEnvId = (): EnvId => {
 };
 
 export let persistentEnv = {};
-persistentEnv["GE"] = theGlobalEnv;
+persistentEnv[theGlobalEnv.id] = theGlobalEnv;
 
 export type BodyId = string;
 let bodyIdCounter: Box<number> = makeBox(0);
