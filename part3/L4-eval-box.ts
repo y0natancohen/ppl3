@@ -25,7 +25,7 @@ import {
     isFrame,
     unbox,
     isGlobalEnv,
-    BodyId
+    BodyId, generateBodyId
 } from "./L4-env-box";
 import {
     isEmptySExp, isSymbolSExp, isClosure, isCompoundSExp, makeClosure, makeCompoundSExp, Closure,
@@ -287,14 +287,21 @@ interface Tree {
     graph: Graph,
 }
 
-function handleClosureGraph(frameBinding: FBinding, resGraph:Graph, envName:string) {
+function handleClosureGraph(frameBinding: FBinding, resGraph:Graph, envName:string):void {
     let closure = unbox(frameBinding.val);
     if (isClosure(closure)) {
-        let new_closure = makeClosureBodyId(closure);
-        let closureLabel = makeClosureLabel(new_closure.bodyId, new_closure);
-        resGraph.setNode(new_closure.bodyId, {label: closureLabel, shape: "record", color: "white"});
-        resGraph.setEdge(envName, new_closure.bodyId, {tailport: frameBinding.var, headport: new_closure.bodyId});
-        resGraph.setEdge(new_closure.bodyId, new_closure.env.id, {tailport: "0"});
+        // let new_closure = makeClosureBodyId(closure);
+        let currentBodyId:BodyId;
+        if(closure.bodyId=== undefined){
+            currentBodyId = generateBodyId();
+            closure.bodyId = currentBodyId;
+        }else{
+            currentBodyId = closure.bodyId;
+        }
+        let closureLabel = makeClosureLabel(currentBodyId, closure);
+        resGraph.setNode(currentBodyId, {label: closureLabel, shape: "record", color: "white"});
+        resGraph.setEdge(envName, currentBodyId, {tailport: frameBinding.var, headport: currentBodyId});
+        resGraph.setEdge(currentBodyId, closure.env.id, {tailport: "0"});
     }
 }
 
@@ -353,7 +360,7 @@ const bindingToString = (binding: FBinding): string => {
         return binding.var + ":" + binding.val;
 };
 
-const makeClosureLabel = (bodyId: BodyId, closure: ClosureBodyId): string => {
+const makeClosureLabel = (bodyId: BodyId, closure: Closure): string => {
     return "{<" + bodyId + ">" + "◯◯\\l|p:" +
         closure.params.map(param => param.var).join(",") + "\\l| b: " +
         closure.body.map(unparse).join(" ") + "\\l}";
@@ -384,7 +391,52 @@ export const evalParseDraw = (s: string): string | Error => {
     else
         return dot.write(tree.graph);
 };
+// const demoProgStr: string = "(L4 (define z 4) (define foo (lambda (x y) (+ x y))) (foo 4 5) ((lambda (x) 5) 8))";
+// const demoProgStr: string = "(L4 (define z 4) (define foo (lambda (x y) (+ x y))) (foo 4 5))";
+// const demoProgStr: string = "(L4 (define make-adder (lambda (a) (lambda (x) (+ x a) ) ) ) (define a5 (make-adder 5)) (a5 10))";
+// const demoProgStr: string = "(L4 (let ((f (let ((a 1))(lambda (x)(+ x a)))))(f 10)))";
+const demoProgStr: string = "(L4 (define x (lambda (x) (* 2 x))) (define y (lambda (f) f)) (y x))";
+console.log(evalParseDraw(demoProgStr));
 
 
+// - no B0 in closure
+// const test2=`
+// (L4
+//   (define z 4)
+//   (define foo (lambda (x y) (+ x y)))
+//   (foo 4 5))`;
+// console.log(evalParseDraw(test2));
+
+
+// empty GE env seen as spllited squre - should be squre
+// const test4=`
+// (L4
+//   (let ((c 1) (d 1)) (+ c d)))`;
+// console.log(evalParseDraw(test4));
+
+
+// const test5=`
+//   (L4
+//     (define x
+//       (lambda (x) (* 2 x)))
+//     (define y
+//       (lambda (f) f))
+//     (y x))`;
+// console.log(evalParseDraw(test5));
+
+//
+// const test6=`(L4 (define x (lambda (x) (* 2 x))) (define y (lambda (f) f)) (y x))`;
+// console.log(evalParseDraw(test6));
+//
+//
+// const test7 = "(L4 (define makeAdder (lambda (n) (lambda (y) (+ y n))))(define a6 (makeAdder 6))(define a7 (makeAdder 7))(+ (a6 1) (a7 1)))";
+// console.log(evalParseDraw(test7));
+//
+//
+// const test8=`(L4 (define z 4) (define foo (lambda (x y) (+ x y))) (foo 4 5))`;
+// console.log(evalParseDraw(test8));
+//
+// const test9=`(L4(define fact(lambda (n)(if(= n 0) 1 (* n (fact (- n 1))))))(fact 3))`;
+// console.log(evalParseDraw(test9));
 
 
