@@ -343,7 +343,7 @@ export const drawEnvDiagram = (pEnv: {}): Tree | Error => {
 };
 
 const makeReturnEnvLeaf = (graph: Graph, envName: string, fromEnvName: string): void => {
-    let nodeName = envName + "_link";
+    let nodeName = envName + "_link_" + fromEnvName;
     graph.setNode(nodeName, {label: envName, shape: "plaintext"});
     graph.setEdge(fromEnvName, nodeName, {style: "dashed"});
 };
