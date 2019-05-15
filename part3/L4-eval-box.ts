@@ -29,7 +29,7 @@ import {
 } from "./L4-env-box";
 import {
     isEmptySExp, isSymbolSExp, isClosure, isCompoundSExp, makeClosure, makeCompoundSExp, Closure,
-    CompoundSExp, EmptySExp, makeEmptySExp, Value, makeClosureBodyId, ClosureBodyId, makeClosure1
+    CompoundSExp, EmptySExp, makeEmptySExp, Value, makeClosure1
 } from "./L4-value-box";
 import {Edge, Graph} from "graphlib";
 import dot = require("graphlib-dot");
