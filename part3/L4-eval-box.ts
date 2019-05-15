@@ -66,11 +66,11 @@ const applicativeEval1 = (exp: CExp | Error, env: Env): Value | Error =>
                     isPrimOp(exp) ? exp :
                         isVarRef(exp) ? applyEnv(env, exp.var) :
                             isLitExp(exp) ? exp.val :
-                                isIfExp(exp) ? evalIf(exp, env) :
+                                isIfExp(exp) ? evalIf1(exp, env) :
                                     isProcExp(exp) ? evalProc1(exp, env) : // change is here
                                         isLetExp(exp) ? evalLet1(exp, env) :     // change is also here
                                             isLetrecExp(exp) ? evalLetrec1(exp, env) :  // change is also here
-                                                isSetExp(exp) ? evalSet(exp, env) :
+                                                isSetExp(exp) ? evalSet1(exp, env) :
                                                     isAppExp(exp) ? applyProcedure1(applicativeEval1(exp.rator, env), // change is also here
                                                         map((rand: CExp) => applicativeEval1(rand, env),
                                                             exp.rands), env) :
@@ -80,11 +80,19 @@ export const isTrueValue = (x: Value | Error): boolean | Error =>
     isError(x) ? x :
         !(x === false);
 
+
 const evalIf = (exp: IfExp, env: Env): Value | Error => {
     const test = applicativeEval(exp.test, env);
     return isError(test) ? test :
         isTrueValue(test) ? applicativeEval(exp.then, env) :
             applicativeEval(exp.alt, env);
+};
+
+const evalIf1 = (exp: IfExp, env: Env): Value | Error => {
+    const test = applicativeEval1(exp.test, env);
+    return isError(test) ? test :
+        isTrueValue(test) ? applicativeEval1(exp.then, env) :
+            applicativeEval1(exp.alt, env);
 };
 
 const evalProc = (exp: ProcExp, env: Env): Closure => {
@@ -275,6 +283,22 @@ const evalLetrec1 = (exp: LetrecExp, env: Env): Value | Error => {
 const evalSet = (exp: SetExp, env: Env): Value | Error => {
     const v = exp.var.var;
     const val = applicativeEval(exp.val, env);
+    if (isError(val))
+        return val;
+    else {
+        const bdg = applyEnvBdg(env, v);
+        if (isError(bdg)) {
+            return Error(`Var not found ${v}`)
+        } else {
+            setFBinding(bdg, val);
+            return undefined;
+        }
+    }
+};
+// L4-eval-box: Handling of mutation with set!
+const evalSet1 = (exp: SetExp, env: Env): Value | Error => {
+    const v = exp.var.var;
+    const val = applicativeEval1(exp.val, env);
     if (isError(val))
         return val;
     else {
