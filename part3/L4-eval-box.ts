@@ -131,7 +131,7 @@ export const evalExps1 = (exps: Exp[], env: Env): Value | Error =>
 const evalCExps1 = (exp1: Exp, exps: Exp[], env: Env): Value | Error =>
     isCExp(exp1) && isEmpty(exps) ? applicativeEval1(exp1, env) :
         isCExp(exp1) ? (isError(applicativeEval1(exp1, env)) ? Error("error") :
-            evalExps(exps, env)) :
+            evalExps1(exps, env)) :
             Error("Never");
 
 // Eval a sequence of expressions when the first exp is a Define.
@@ -160,7 +160,7 @@ const evalDefineExps1 = (def: Exp, exps: Exp[]): Value | Error => {
             return rhs;
         else {
             globalEnvAddBinding(def.var.var, rhs);
-            return evalExps(exps, theGlobalEnv);
+            return evalExps1(exps, theGlobalEnv);
         }
     } else {
         return Error("unexpected " + def);
