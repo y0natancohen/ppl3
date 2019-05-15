@@ -35,15 +35,15 @@ import {
     Binding,
     makeVarDecl,
     Program,
-    CExp, isCExp, LetrecExp, SetExp, CompoundExp, StrExp
+    CExp, isCExp, LetrecExp, SetExp, CompoundExp, StrExp, makeBoolExp
 } from "./L4-ast";
 import {safeF2, safeFL, safeF, isError} from "./error";
 import {
     Closure,
     CompoundSExp,
-    EmptySExp,
+    EmptySExp, isClosure,
     isCompoundSExp,
-    isEmptySExp, makeEmptySExp,
+    isEmptySExp, isSymbolSExp, makeEmptySExp,
     SExp,
     SymbolSExp,
     valueToString
@@ -134,9 +134,27 @@ const makeCompundSexpTree = (exp: CompoundSExp): Tree | Error => {
 const makeEmptySexpLeaf = (): Tree =>
     makeLeaf(makeEmptySExp().tag);
 
+const makeClosureTree = (exp: Closure): Tree | Error => {
+    let listTree = exp.body.map(makeCExpTree);
+    if (listTree.some(isError)){
+        return listTree.filter(isError)[0];
+    }else{
+        //@ts-ignore
+        // listTree is not error here
+        let nodes = makeListNode(listTree);
+        return makeTree(exp.tag, [nodes], ["body"])
+    }
+
+};
 const makeSexpLeaf = (sexp: SExp): Tree | Error => {
-    return isNumber(sexp)? makeLeaf(sexp.toString()) : makeLeaf(sexp.toString());
-    // number | boolean | string | PrimOp | Closure | SymbolSExp | EmptySExp | CompoundSExp
+    return (isNumber(sexp))? makeLeaf(sexp.toString()):
+        isBoolExp(sexp)? makeLeaf(String(sexp.val)):
+            isStrExp(sexp)? makeLeaf(sexp.val):
+                isPrimOp(sexp)? makeLeaf(sexp.op):
+                    isClosure(sexp)? makeClosureTree(sexp):
+                        isSymbolSExp(sexp)? makeTree(sexp.tag, [makeLeaf(sexp.val)], ["val"]):
+                            isEmptySExp(sexp)? makeEmptySexpLeaf():
+                                Error("never");
 };
 
 const makeVarRefTree = (exp: VarRef): Tree =>
@@ -272,6 +290,7 @@ const makeCExpTree = (exp: CExp): Tree | Error =>
 
 const do1 = (p1:string)=>{
     console.log(p1);
+    console.log(parse(p1));
     console.log(expToTree(p1));
     console.log("");
 
