@@ -23,12 +23,24 @@ export interface Closure {
     params: VarDecl[];
     body: CExp[];
     env: Env;
-    bodyId:string;
 }
 export const makeClosure = (params: VarDecl[], body: CExp[], env: Env): Closure =>
-    ({tag: "Closure", params, body, env, bodyId:generateBodyId()});
+    ({tag: "Closure", params, body, env});
+
 export const isClosure = (x: any): x is Closure => x.tag === "Closure";
 
+export interface ClosureBodyId {
+    tag: "ClosureBodyId";
+    params: VarDecl[];
+    body: CExp[];
+    env: Env;
+    bodyId: string;
+}
+
+export const makeClosureBodyId= (closure: Closure): ClosureBodyId =>
+    ({tag: "ClosureBodyId", params: closure.params, body: closure.body, env: closure.env, bodyId: generateBodyId()});
+
+export const isClosureBodyId = (x: any): x is Closure => x.tag === "ClosureBodyId";
 
 // ========================================================
 // SExp

@@ -20,19 +20,16 @@ import {
     theGlobalEnv,
     Env,
     persistentEnv,
-    generateEnvId,
     FBinding,
     isExtEnv,
     isFrame,
     unbox,
     isGlobalEnv,
-    EnvId,
-    ExtEnv,
-    generateBodyId, BodyId
+    BodyId
 } from "./L4-env-box";
 import {
     isEmptySExp, isSymbolSExp, isClosure, isCompoundSExp, makeClosure, makeCompoundSExp, Closure,
-    CompoundSExp, EmptySExp, makeEmptySExp, Value
+    CompoundSExp, EmptySExp, makeEmptySExp, Value, makeClosureBodyId, ClosureBodyId
 } from "./L4-value-box";
 import {Edge, Graph} from "graphlib";
 import dot = require("graphlib-dot");
@@ -291,12 +288,13 @@ interface Tree {
 }
 
 function handleClosureGraph(frameBinding: FBinding, resGraph:Graph, envName:string) {
-    let val = unbox(frameBinding.val);
-    if (isClosure(val)) {
-        let closureLabel = makeClosureLabel(val.bodyId, val);
-        resGraph.setNode(val.bodyId, {label: closureLabel, shape: "record", color: "white"});
-        resGraph.setEdge(envName, val.bodyId, {tailport: frameBinding.var, headport: "0"});
-        resGraph.setEdge(val.bodyId, val.env.id, {tailport: "0"});
+    let closure = unbox(frameBinding.val);
+    if (isClosure(closure)) {
+        let new_closure = makeClosureBodyId(closure);
+        let closureLabel = makeClosureLabel(new_closure.bodyId, new_closure);
+        resGraph.setNode(new_closure.bodyId, {label: closureLabel, shape: "record", color: "white"});
+        resGraph.setEdge(envName, new_closure.bodyId, {tailport: frameBinding.var, headport: new_closure.bodyId});
+        resGraph.setEdge(new_closure.bodyId, new_closure.env.id, {tailport: "0"});
     }
 }
 
@@ -355,10 +353,10 @@ const bindingToString = (binding: FBinding): string => {
         return binding.var + ":" + binding.val;
 };
 
-const makeClosureLabel = (bodyId: BodyId, closure: Closure): string => {
+const makeClosureLabel = (bodyId: BodyId, closure: ClosureBodyId): string => {
     return "{<" + bodyId + ">" + "◯◯\\l|p:" +
-        closure.params.map(param => param.var).join(",") + "\\l|" + bodyId + ": " +
-        closure.body.map(unparse).join("\n") + "\\l}";
+        closure.params.map(param => param.var).join(",") + "\\l| b: " +
+        closure.body.map(unparse).join(" ") + "\\l}";
 };
 
 const makeLabel = (envName: string, env: Env): string => {
@@ -386,12 +384,7 @@ export const evalParseDraw = (s: string): string | Error => {
     else
         return dot.write(tree.graph);
 };
-// const demoProgStr: string = "(L4 (define z 4) (define foo (lambda (x y) (+ x y))) (foo 4 5) ((lambda (x) 5) 8))";
-// const demoProgStr: string = "(L4 (define z 4) (define foo (lambda (x y) (+ x y))) (foo 4 5))";
-// const demoProgStr: string = "(L4 (define make-adder (lambda (a) (lambda (x) (+ x a) ) ) ) (define a5 (make-adder 5)) (a5 10))";
-// const demoProgStr: string = "(L4 (let ((f (let ((a 1))(lambda (x)(+ x a)))))(f 10)))";
-const demoProgStr: string = "(L4 (define x (lambda (x) (* 2 x))) (define y (lambda (f) f)) (y x))";
-console.log(evalParseDraw(demoProgStr));
+
 
 
 
