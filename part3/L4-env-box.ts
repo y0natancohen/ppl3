@@ -122,7 +122,9 @@ export interface ExtEnv {
 }
 
 export const isExtEnv = (x: any): x is ExtEnv => x.tag === "ExtEnv";
-export const makeExtEnv = (vs: string[], vals: Value[], env: Env, returnEnv:Env): ExtEnv =>
+export const makeExtEnv = (vs: string[], vals: Value[], env: Env): ExtEnv =>
+    ({tag: "ExtEnv", frame: makeFrame(vs, vals), env: env, returnEnv: env, id: "default"});
+export const makeExtEnv1 = (vs: string[], vals: Value[], env: Env, returnEnv:Env): ExtEnv =>
     ({tag: "ExtEnv", frame: makeFrame(vs, vals), env: env, returnEnv:returnEnv, id:generateEnvId()});
 export const ExtEnvVars = (env: ExtEnv): string[] =>
     map(getFBindingVar, env.frame.fbindings);

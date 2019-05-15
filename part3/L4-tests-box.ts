@@ -12,8 +12,8 @@ import { evalParse } from './L4-eval-box';
 {
     // todo: fix test
     // Extended envs are defined with a frame (vars, vals)
-    const env1 = makeExtEnv(["a", "b"], [1, 2], theGlobalEnv, theGlobalEnv);
-    const env2 = makeExtEnv(["a"], [3], env1, env1);
+    const env1 = makeExtEnv(["a", "b"], [1, 2], theGlobalEnv);
+    const env2 = makeExtEnv(["a"], [3], env1);
 
     assert.ok(isEnv(theGlobalEnv));
     assert.ok(isEnv(env1));

@@ -25,7 +25,7 @@ import {
     isFrame,
     unbox,
     isGlobalEnv,
-    BodyId, generateBodyId
+    BodyId, generateBodyId, makeExtEnv1
 } from "./L4-env-box";
 import {
     isEmptySExp, isSymbolSExp, isClosure, isCompoundSExp, makeClosure, makeCompoundSExp, Closure,
@@ -68,11 +68,11 @@ const applicativeEval1 = (exp: CExp | Error, env: Env): Value | Error =>
                             isLitExp(exp) ? exp.val :
                                 isIfExp(exp) ? evalIf(exp, env) :
                                     isProcExp(exp) ? evalProc1(exp, env) : // change is here
-                                        isLetExp(exp) ? evalLet(exp, env) :
-                                            isLetrecExp(exp) ? evalLetrec(exp, env) :
+                                        isLetExp(exp) ? evalLet1(exp, env) :     // change is also here
+                                            isLetrecExp(exp) ? evalLetrec1(exp, env) :  // change is also here
                                                 isSetExp(exp) ? evalSet(exp, env) :
-                                                    isAppExp(exp) ? applyProcedure(applicativeEval(exp.rator, env),
-                                                        map((rand: CExp) => applicativeEval(rand, env),
+                                                    isAppExp(exp) ? applyProcedure1(applicativeEval1(exp.rator, env), // change is also here
+                                                        map((rand: CExp) => applicativeEval1(rand, env),
                                                             exp.rands), env) :
                                                         Error(`Bad L4 AST ${exp}`);
 
@@ -104,11 +104,24 @@ const applyProcedure = (proc: Value | Error, args: Array<Value | Error>, returnE
                 isClosure(proc) ? applyClosure(proc, args, returnEnv) :
                     Error(`Bad procedure ${JSON.stringify(proc)}`);
 
+const applyProcedure1 = (proc: Value | Error, args: Array<Value | Error>, returnEnv: Env): Value | Error =>
+    isError(proc) ? proc :
+        !hasNoError(args) ? Error(`Bad argument: ${getErrorMessages(args)}`) :
+            isPrimOp(proc) ? applyPrimitive(proc, args) :
+                isClosure(proc) ? applyClosure1(proc, args, returnEnv) :
+                    Error(`Bad procedure ${JSON.stringify(proc)}`);
+
 const applyClosure = (proc: Closure, args: Value[], returnEnv: Env): Value | Error => {
     let vars = map((v: VarDecl) => v.var, proc.params);
-    let extendedEnv = makeExtEnv(vars, args, proc.env, returnEnv);
+    let extendedEnv = makeExtEnv(vars, args, proc.env);
     persistentEnv[extendedEnv.id] = extendedEnv;
     return evalExps(proc.body, extendedEnv);
+};
+const applyClosure1 = (proc: Closure, args: Value[], returnEnv: Env): Value | Error => {
+    let vars = map((v: VarDecl) => v.var, proc.params);
+    let extendedEnv = makeExtEnv1(vars, args, proc.env, returnEnv);
+    persistentEnv[extendedEnv.id] = extendedEnv;
+    return evalExps1(proc.body, extendedEnv);
 };
 
 // Evaluate a sequence of expressions (in a program)
@@ -202,9 +215,21 @@ const evalLet = (exp: LetExp, env: Env): Value | Error => {
     const vals = map((v: CExp) => applicativeEval(v, env), map((b: Binding) => b.val, exp.bindings));
     const vars = map((b: Binding) => b.var.var, exp.bindings);
     if (hasNoError(vals)) {
-        let newEnv = makeExtEnv(vars, vals, env, env);
+        let newEnv = makeExtEnv(vars, vals, env);
         persistentEnv[newEnv.id] = newEnv;
         return evalExps(exp.body, newEnv);
+    } else {
+        return Error(getErrorMessages(vals));
+    }
+};
+
+const evalLet1 = (exp: LetExp, env: Env): Value | Error => {
+    const vals = map((v: CExp) => applicativeEval1(v, env), map((b: Binding) => b.val, exp.bindings));
+    const vars = map((b: Binding) => b.var.var, exp.bindings);
+    if (hasNoError(vals)) {
+        let newEnv = makeExtEnv1(vars, vals, env, env);
+        persistentEnv[newEnv.id] = newEnv;
+        return evalExps1(exp.body, newEnv);
     } else {
         return Error(getErrorMessages(vals));
     }
@@ -219,13 +244,28 @@ const evalLet = (exp: LetExp, env: Env): Value | Error => {
 const evalLetrec = (exp: LetrecExp, env: Env): Value | Error => {
     const vars = map((b: Binding) => b.var.var, exp.bindings);
     const vals = map((b: Binding) => b.val, exp.bindings);
-    const extEnv = makeExtEnv(vars, repeat(undefined, vars.length), env, env);
+    const extEnv = makeExtEnv(vars, repeat(undefined, vars.length), env);
     // @@ Compute the vals in the extended env
     const cvals = map((v: CExp) => applicativeEval(v, extEnv), vals);
     if (hasNoError(cvals)) {
         // Bind vars in extEnv to the new values
         zipWith((bdg, cval) => setFBinding(bdg, cval), extEnv.frame.fbindings, cvals);
         return evalExps(exp.body, extEnv);
+    } else {
+        return Error(getErrorMessages(cvals));
+    }
+};
+
+const evalLetrec1 = (exp: LetrecExp, env: Env): Value | Error => {
+    const vars = map((b: Binding) => b.var.var, exp.bindings);
+    const vals = map((b: Binding) => b.val, exp.bindings);
+    const extEnv = makeExtEnv1(vars, repeat(undefined, vars.length), env, env);
+    // @@ Compute the vals in the extended env
+    const cvals = map((v: CExp) => applicativeEval1(v, extEnv), vals);
+    if (hasNoError(cvals)) {
+        // Bind vars in extEnv to the new values
+        zipWith((bdg, cval) => setFBinding(bdg, cval), extEnv.frame.fbindings, cvals);
+        return evalExps1(exp.body, extEnv);
     } else {
         return Error(getErrorMessages(cvals));
     }
