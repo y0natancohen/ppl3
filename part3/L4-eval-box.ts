@@ -516,16 +516,6 @@ export const evalParseDraw = (s: string): string | Error => {
     else
         return dot.write(tree.graph);
 };
-// const demoProgStr: string = "(L4 (define z 4) (define foo (lambda (x y) (+ x y))) (foo 4 5) ((lambda (x) 5) 8))";
-// const demoProgStr: string = "(L4 (define z 4) (define foo (lambda (x y) (+ x y))) (foo 4 5))";
-// const demoProgStr: string = "(L4 (define make-adder (lambda (a) (lambda (x) (+ x a) ) ) ) (define a5 (make-adder 5)) (a5 10))";
-// const demoProgStr: string = "(L4 (let ((f (let ((a 1))(lambda (x)(+ x a)))))(f 10)))";
-// const demoProgStr: string = "(L4 (define x (lambda (x) (* 2 x))) (define y (lambda (f) f)) (y x))";
-// console.log(evalParseDraw(demoProgStr));
 
 
 
-
-
-const test9=`(L4(define fact(lambda (n)(if(= n 0) 1 (* n (fact (- n 1))))))(fact 3))`;
-console.log(evalParseDraw(test9));
