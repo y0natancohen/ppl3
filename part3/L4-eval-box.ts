@@ -29,7 +29,7 @@ import {
 } from "./L4-env-box";
 import {
     isEmptySExp, isSymbolSExp, isClosure, isCompoundSExp, makeClosure, makeCompoundSExp, Closure,
-    CompoundSExp, EmptySExp, makeEmptySExp, Value, makeClosureBodyId, ClosureBodyId
+    CompoundSExp, EmptySExp, makeEmptySExp, Value, makeClosureBodyId, ClosureBodyId, makeClosure1
 } from "./L4-value-box";
 import {Edge, Graph} from "graphlib";
 import dot = require("graphlib-dot");
@@ -58,6 +58,24 @@ const applicativeEval = (exp: CExp | Error, env: Env): Value | Error =>
                                                             exp.rands), env) :
                                                         Error(`Bad L4 AST ${exp}`);
 
+const applicativeEval1 = (exp: CExp | Error, env: Env): Value | Error =>
+    isError(exp) ? exp :
+        isNumExp(exp) ? exp.val :
+            isBoolExp(exp) ? exp.val :
+                isStrExp(exp) ? exp.val :
+                    isPrimOp(exp) ? exp :
+                        isVarRef(exp) ? applyEnv(env, exp.var) :
+                            isLitExp(exp) ? exp.val :
+                                isIfExp(exp) ? evalIf(exp, env) :
+                                    isProcExp(exp) ? evalProc1(exp, env) : // change is here
+                                        isLetExp(exp) ? evalLet(exp, env) :
+                                            isLetrecExp(exp) ? evalLetrec(exp, env) :
+                                                isSetExp(exp) ? evalSet(exp, env) :
+                                                    isAppExp(exp) ? applyProcedure(applicativeEval(exp.rator, env),
+                                                        map((rand: CExp) => applicativeEval(rand, env),
+                                                            exp.rands), env) :
+                                                        Error(`Bad L4 AST ${exp}`);
+
 export const isTrueValue = (x: Value | Error): boolean | Error =>
     isError(x) ? x :
         !(x === false);
@@ -71,6 +89,9 @@ const evalIf = (exp: IfExp, env: Env): Value | Error => {
 
 const evalProc = (exp: ProcExp, env: Env): Closure => {
     return makeClosure(exp.args, exp.body, env);
+};
+const evalProc1 = (exp: ProcExp, env: Env): Closure => {
+    return makeClosure1(exp.args, exp.body, env);
 };
 
 // @Pre: none of the args is an Error (checked in applyProcedure)
@@ -102,6 +123,17 @@ const evalCExps = (exp1: Exp, exps: Exp[], env: Env): Value | Error =>
             evalExps(exps, env)) :
             Error("Never");
 
+export const evalExps1 = (exps: Exp[], env: Env): Value | Error =>
+    isEmpty(exps) ? Error("Empty program") :
+        isDefineExp(first(exps)) ? evalDefineExps1(first(exps), rest(exps)) :
+            evalCExps1(first(exps), rest(exps), env);
+
+const evalCExps1 = (exp1: Exp, exps: Exp[], env: Env): Value | Error =>
+    isCExp(exp1) && isEmpty(exps) ? applicativeEval1(exp1, env) :
+        isCExp(exp1) ? (isError(applicativeEval1(exp1, env)) ? Error("error") :
+            evalExps(exps, env)) :
+            Error("Never");
+
 // Eval a sequence of expressions when the first exp is a Define.
 // Compute the rhs of the define, extend the env with the new binding
 // then compute the rest of the exps in the new env.
@@ -121,11 +153,26 @@ const evalDefineExps = (def: Exp, exps: Exp[]): Value | Error => {
         return Error("unexpected " + def);
     }
 };
+const evalDefineExps1 = (def: Exp, exps: Exp[]): Value | Error => {
+    if (isDefineExp(def)) {
+        let rhs = applicativeEval1(def.val, theGlobalEnv);
+        if (isError(rhs))
+            return rhs;
+        else {
+            globalEnvAddBinding(def.var.var, rhs);
+            return evalExps(exps, theGlobalEnv);
+        }
+    } else {
+        return Error("unexpected " + def);
+    }
+};
 
 // Main program
 // L4-BOX @@ Use GE instead of empty-env
 export const evalProgram = (program: Program): Value | Error =>
     evalExps(program.exps, theGlobalEnv);
+export const evalProgram1 = (program: Program): Value | Error =>
+    evalExps1(program.exps, theGlobalEnv);
 
 export const evalParse = (s: string): Value | Error => {
     let ast: Parsed | Error = parse(s);
@@ -133,6 +180,17 @@ export const evalParse = (s: string): Value | Error => {
         return evalProgram(ast);
     } else if (isExp(ast)) {
         return evalExps([ast], theGlobalEnv);
+    } else {
+        return ast;
+    }
+};
+
+export const evalParse1 = (s: string): Value | Error => {
+    let ast: Parsed | Error = parse(s);
+    if (isProgram(ast)) {
+        return evalProgram1(ast);
+    } else if (isExp(ast)) {
+        return evalExps1([ast], theGlobalEnv);
     } else {
         return ast;
     }
@@ -291,13 +349,14 @@ function handleClosureGraph(frameBinding: FBinding, resGraph:Graph, envName:stri
     let closure = unbox(frameBinding.val);
     if (isClosure(closure)) {
         // let new_closure = makeClosureBodyId(closure);
-        let currentBodyId:BodyId;
-        if(closure.bodyId=== undefined){
-            currentBodyId = generateBodyId();
-            closure.bodyId = currentBodyId;
-        }else{
-            currentBodyId = closure.bodyId;
-        }
+        // let currentBodyId:BodyId;
+        // if(closure['bodyId']=== undefined){
+        //     currentBodyId = generateBodyId();
+        //     closure['bodyId'] = currentBodyId;
+        // }else{
+        //     currentBodyId = closure['bodyId'];
+        // }
+        let currentBodyId = closure.bodyId;
         let closureLabel = makeClosureLabel(currentBodyId, closure);
         resGraph.setNode(currentBodyId, {label: closureLabel, shape: "record", color: "white"});
         resGraph.setEdge(envName, currentBodyId, {tailport: frameBinding.var, headport: currentBodyId});
@@ -384,7 +443,7 @@ const makeLabel = (envName: string, env: Env): string => {
 * it runs parseEval and then drawEnvDiagram
 * */
 export const evalParseDraw = (s: string): string | Error => {
-    evalParse(s);
+    evalParse1(s);
     let tree = drawEnvDiagram(persistentEnv);
     if (isError(tree))
         return tree;
