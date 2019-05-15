@@ -388,14 +388,6 @@ interface Tree {
 function handleClosureGraph(frameBinding: FBinding, resGraph:Graph, envName:string):void {
     let closure = unbox(frameBinding.val);
     if (isClosure(closure)) {
-        // let new_closure = makeClosureBodyId(closure);
-        // let currentBodyId:BodyId;
-        // if(closure['bodyId']=== undefined){
-        //     currentBodyId = generateBodyId();
-        //     closure['bodyId'] = currentBodyId;
-        // }else{
-        //     currentBodyId = closure['bodyId'];
-        // }
         let currentBodyId = closure.bodyId;
         let closureLabel = makeClosureLabel(currentBodyId, closure);
         resGraph.setNode(currentBodyId, {label: closureLabel, shape: "record", color: "white"});
